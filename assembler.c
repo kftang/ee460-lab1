@@ -586,7 +586,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
           parsed_asm->error_code = 1;
           return parsed_asm;
         }
-        offset = label->address - asm_state.cur_address;
+        offset = (label->address - asm_state.cur_address) / 2 - 1;
 
       // Otherwise parse offset from operand
       } else {
@@ -598,7 +598,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
       // Check that the offset is a valid range
       if (offset < min || offset > max) {
         parsed_asm->valid_asm = false;
-        parsed_asm->error_code = 3;
+        parsed_asm->error_code = 4;
         return parsed_asm;
       }
 
@@ -608,6 +608,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         unsigned_offset <<= shift_bits;
         unsigned_offset >>= shift_bits;
       }
+      printf("br offset: %d\n", offset);
 
       parsed_asm->machine_code |= unsigned_offset;
       break;
@@ -624,6 +625,41 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
     // jsr has no shared mapping
     case 4: {
+      int16_t offset;
+
+      // If offset is a label, convert it into an offset
+      if (is_label(asm_line->operand1)) {
+        struct label_t *label = get_label(asm_line->operand1);
+        if (label == NULL) {
+          parsed_asm->valid_asm = false;
+          parsed_asm->error_code = 1;
+          return parsed_asm;
+        }
+        offset = (label->address - asm_state.cur_address) / 2 - 1;
+
+      // Otherwise parse offset from operand
+      } else {
+        struct parsed_num_t *parsed_num = parse_num(asm_line->operand1);
+        offset = parsed_num->num;
+        free(parsed_num);
+      }
+
+      // Check that the offset is a valid range
+      if (offset < min || offset > max) {
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 4;
+        return parsed_asm;
+      }
+
+      // If immediate is negative, we need to remove the leading 1s
+      uint16_t unsigned_offset = offset;
+      if (offset < 0) {
+        unsigned_offset <<= shift_bits;
+        unsigned_offset >>= shift_bits;
+      }
+      printf("jsr offset: %d\n", offset);
+
+      parsed_asm->machine_code |= (unsigned_offset | 0x0800);
       break;
     }
 
@@ -666,6 +702,43 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
     // lea has no shared mapping
     case 8: {
+      uint16_t dr = parse_register(asm_line->operand1) << 9;
+
+      int16_t offset;
+
+      // If offset is a label, convert it into an offset
+      if (is_label(asm_line->operand2)) {
+        struct label_t *label = get_label(asm_line->operand2);
+        if (label == NULL) {
+          parsed_asm->valid_asm = false;
+          parsed_asm->error_code = 1;
+          return parsed_asm;
+        }
+        offset = (label->address - asm_state.cur_address) / 2 - 1;
+
+      // Otherwise parse offset from operand
+      } else {
+        struct parsed_num_t *parsed_num = parse_num(asm_line->operand2);
+        offset = parsed_num->num;
+        free(parsed_num);
+      }
+
+      // Check that the offset is a valid range
+      if (offset < min || offset > max) {
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 4;
+        return parsed_asm;
+      }
+
+      // If immediate is negative, we need to remove the leading 1s
+      uint16_t unsigned_offset = offset;
+      if (offset < 0) {
+        unsigned_offset <<= shift_bits;
+        unsigned_offset >>= shift_bits;
+      }
+      printf("lea offset: %d\n", offset);
+
+      parsed_asm->machine_code |= (unsigned_offset | dr);
       break;
     }
     
