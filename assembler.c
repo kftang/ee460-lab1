@@ -775,7 +775,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     // ret has no shared mapping
     case 11: {
       break;
-      parsed_asm->machine_code |= (0x1B0);
+      parsed_asm->machine_code |= (0x01C0);
     }
 
     // lshf, rsfl, rshfa have same mapping
