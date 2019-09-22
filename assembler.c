@@ -678,18 +678,19 @@ int main(int argc, char* argv[]) {
     struct asm_line_t *asm_line = tokenize_line(buffer);
     printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
     
+    // Checks for empty line and skips it
+    if (asm_line->state == EMPTY_LINE || asm_state.state == END) {
+      line_number++;
+      free_asm_line(asm_line);
+      continue;
+    }
+
     // Make sure the line is valid
     if (!asm_line->valid_line || !validate_asm_line(asm_line)) {
       printf("Line %d is invalid", line_number);
       free_asm_line(asm_line);
       exit(2);
       return 1;
-    }
-
-    if (asm_line->state == EMPTY_LINE || asm_state.state == END) {
-      line_number++;
-      free_asm_line(asm_line);
-      continue;
     }
 
     // Check for .orig
