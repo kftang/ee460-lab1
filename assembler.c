@@ -494,7 +494,9 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
   // Get immediate mask for this opcode
   uint16_t immediate_mask = immediate_masks[opcode_number];
-
+  int16_t min = immediate_min_max[opcode_number][0];
+  int16_t max = immediate_min_max[opcode_number][1];
+  int shift_bits = 16 - immediate_bits[opcode_number];
   switch (opcode_number) {
     // add, and, xor all have the same mapping
     case 0:
@@ -517,8 +519,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         free(parsed_num);
 
         // Check if immediate is between valid min/max
-        int16_t min = immediate_min_max[opcode_number][0];
-        int16_t max = immediate_min_max[opcode_number][1];
         if (immediate < min || immediate > max) {
           parsed_asm->valid_asm = false;
           parsed_asm->error_code = 3;
@@ -526,7 +526,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         }
         uint16_t unsigned_immediate = immediate;
         if (immediate < 0) {
-          int shift_bits = 16 - immediate_bits[opcode_number];
           unsigned_immediate <<= shift_bits;
           unsigned_immediate >>= shift_bits;
         }
@@ -584,8 +583,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
       }
 
       // Check if immediate is between valid min/max
-      int16_t min = immediate_min_max[opcode_number][0];
-      int16_t max = immediate_min_max[opcode_number][1];
       if (immediate < min || immediate > max) {
         parsed_asm->valid_asm = false;
         parsed_asm->error_code = 3;
@@ -593,7 +590,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
       }
       uint16_t unsigned_immediate = immediate;
       if (immediate < 0) {
-        int shift_bits = 16 - immediate_bits[opcode_number];
         unsigned_immediate <<= shift_bits;
         unsigned_immediate >>= shift_bits;
       }
@@ -649,8 +645,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
       free(parsed_num);
 
       // Check if immediate is between valid min/max
-      int16_t min = immediate_min_max[opcode_number][0];
-      int16_t max = immediate_min_max[opcode_number][1];
       if (immediate < min || immediate > max) {
         parsed_asm->valid_asm = false;
         parsed_asm->error_code = 3;
@@ -665,7 +659,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
       //   shift_amount >>= shift_bits;
       // }
 
-      parsed_asm->machine_code |= shift_amount;
+      parsed_asm->machine_code |= immediate;
       break;
     }
 
@@ -677,8 +671,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
       free(parsed_num);
 
       // Check if immediate is between valid min/max
-      int16_t min = immediate_min_max[opcode_number][0];
-      int16_t max = immediate_min_max[opcode_number][1];
       if (immediate < min || immediate > max) {
         parsed_asm->valid_asm = false;
         parsed_asm->error_code = 3;
@@ -687,12 +679,11 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
       uint16_t trap_vector = immediate;
       if (immediate < 0) {
-        int shift_bits = 16 - immediate_bits[opcode_number];
         trap_vector <<= shift_bits;
         trap_vector >>= shift_bits;
       }
 
-      parsed_asm->machine_code |= shift_amount;
+      parsed_asm->machine_code |= trap_vector;
       break;
     }
 
@@ -702,6 +693,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 22:
     case 23:
     case 24: {
+      parsed_asm->machine_code |= 0x25;
       break;
     }
 
