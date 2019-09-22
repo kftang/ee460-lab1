@@ -1,3 +1,10 @@
+/*
+	Name 1: Geoffrey Tian
+	Name 2: Kenny Tang
+	UTEID 1: gt5652
+	UTEID 2: kt24367
+*/
+
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,7 +35,7 @@ enum operand_type_t {
 };
 
 struct label_t {
-  char              name[MAX_LABEL_LENGTH];
+  char              name[MAX_LABEL_LENGTH + 1];
   uint16_t          address;
 };
 
@@ -54,6 +61,7 @@ struct parsed_num_t {
 struct asm_line_t {
   enum line_state_t state;
   bool              valid_line;
+  int               error_code;
   char              *label_name;
   char              *opcode;
   char              *operand1;
@@ -119,13 +127,13 @@ uint16_t instruction_opcode[43] = {
 enum operand_type_t valid_types[43][3] = {
   { REGISTER, REGISTER, REGISTER | IMMEDIATE },
   { REGISTER, REGISTER, REGISTER | IMMEDIATE },
-  { LABEL | IMMEDIATE },
+  { LABEL },
   { REGISTER },
-  { LABEL | IMMEDIATE },
+  { LABEL },
   { REGISTER },
   { REGISTER, REGISTER, IMMEDIATE },
   { REGISTER, REGISTER, IMMEDIATE },
-  { REGISTER, LABEL | IMMEDIATE },
+  { REGISTER, LABEL },
   { },
   { REGISTER, REGISTER },
   { },
@@ -199,12 +207,14 @@ struct asm_line_t * tokenize_line(char *asm_str) {
 
     // Make sure token exists, otherwise return invalid line
     if (token == NULL) {
+      printf("opcode not found\n");
       // Free label name
       free(asm_line->label_name);
       asm_line->label_name = NULL;
 
       // Set line to invalid
       asm_line->valid_line = false;
+      asm_line->error_code = 2;
       return asm_line;
     }
 
@@ -219,12 +229,14 @@ struct asm_line_t * tokenize_line(char *asm_str) {
 
     // Make sure opcode was populated, otherwise opcode is invalid
     if (asm_line->opcode == NULL) {
+      printf("invalid opcode\n");
       // Free label name
       free(asm_line->label_name);
       asm_line->label_name = NULL;
 
       // Set line to invalid
       asm_line->valid_line = false;
+      asm_line->error_code = 2;
       return asm_line;
     }
   }
@@ -247,6 +259,8 @@ struct asm_line_t * tokenize_line(char *asm_str) {
         asm_line->operand3 = (char *) malloc(sizeof(char) * (strlen(token) + 1));
         strcpy(asm_line->operand3, token);
       }
+      if (*token == ';')
+        return asm_line;
       // After 3 opereands, the next token can only be valid if it is a comment
       token = strtok(NULL, " \t,\n");
       if (token != NULL && *token != ';') {
@@ -265,6 +279,7 @@ struct asm_line_t * tokenize_line(char *asm_str) {
 
         // Set line to invalid
         asm_line->valid_line = false;
+        asm_line->error_code = 4;
         return asm_line;
       }
     }
@@ -791,14 +806,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         return parsed_asm;
       }
 
-      // Shouldn't need to shift because it is unsigned
-      // uint16_t shift_amount = immediate;
-      // if (immediate < 0) {
-      //   int shift_bits = 16 - immediate_bits[opcode_number];
-      //   shift_amount <<= shift_bits;
-      //   shift_amount >>= shift_bits;
-      // }
-
       parsed_asm->machine_code |= immediate;
       break;
     }
@@ -839,8 +846,9 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
     // fill has no shared mapping
     case 42: {
-      uint16_t value = parse_register(asm_line->operand1);
-      parsed_asm->machine_code |= (value <<= 12);
+      struct parsed_num_t *parsed_num = parse_num(asm_line->operand1);
+      parsed_asm->machine_code |= parsed_num->num;
+      free(parsed_num);
       break;
     }
   }
@@ -907,7 +915,7 @@ int main(int argc, char* argv[]) {
 
     // Tokenize asm string
     struct asm_line_t *asm_line = tokenize_line(buffer);
-    // printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
+    printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
     
     // Checks for empty line and skips it
     if (asm_line->state == EMPTY_LINE || asm_state.state == END) {
@@ -917,14 +925,19 @@ int main(int argc, char* argv[]) {
     }
 
     // Make sure the line is valid
-    if (!asm_line->valid_line || !validate_asm_line(asm_line)) {
+    if (!asm_line->valid_line) {
       printf("Line %d is invalid", line_number);
       free_asm_line(asm_line);
       if (asm_state.state == INITIAL) {
         exit(4);
       } else {
-        exit(2);
+        exit(asm_line->error_code);
       }
+      return 1;
+    }
+    if (!validate_asm_line(asm_line)) {
+      free_asm_line(asm_line);
+      exit(4);
       return 1;
     }
 
@@ -952,6 +965,21 @@ int main(int argc, char* argv[]) {
         return 1;
       }
     } else if (asm_line->label_name != NULL) {
+      // Check if out of labels
+      if (asm_state.num_labels == MAX_SYMBOLS) {
+        printf("Out of labels\n");
+        exit(4);
+        return 1;
+      }
+
+      // Check if label already made
+      for (int i = 0; i < MAX_SYMBOLS && asm_state.sym_table[i] != NULL; i++) {
+        if (strcmp(asm_state.sym_table[i]->name, asm_line->label_name) == 0) {
+          printf("Duplicate label found\n");
+          exit(4);
+          return 1;
+        }
+      }
       // Create a new label and set its address and copy its name
       struct label_t *new_label = (struct label_t *) malloc(sizeof(struct label_t));
       new_label->address = asm_state.cur_address;
