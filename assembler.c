@@ -108,17 +108,9 @@ int16_t immediate_min_max[43][2] = {
   { -32768, 32767 }, {}, { -32768, 32767 }
 };
 
-uint16_t immediate_masks[43] = {
-  0x001f, 0x001f, 0x01ff, 0x0000, 0x07ff, 0x0000, 0x003f, 0x003f,
-  0x01ff, 0x0000, 0x0000, 0x0000, 0x000f, 0x000f, 0x000f, 0x0000, 0x003f,
-  0x003f, 0x00ff, 0x001f, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-  0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 
-  0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff
-};
-
 uint16_t instruction_opcode[43] = {
-  0x1000, 0x5000, 0x0000, 0xb000, 0x4000, 0x4000, 0x2000, 0x6000,
-  0xe000, 0x0000, 0x9000, 0xb000, 0xc000, 0xc000, 0xc000, 0x8000, 0x3000,
+  0x1000, 0x5000, 0x0000, 0xc000, 0x4000, 0x4000, 0x2000, 0x6000,
+  0xe000, 0x0000, 0x9000, 0xc000, 0xd000, 0xd000, 0xd000, 0x8000, 0x3000,
   0x7000, 0xf000, 0x9000, 0xf000, 0xf000, 0xf000, 0xf000, 0xf000,
   0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
   0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
@@ -259,7 +251,7 @@ struct asm_line_t * tokenize_line(char *asm_str) {
         asm_line->operand3 = (char *) malloc(sizeof(char) * (strlen(token) + 1));
         strcpy(asm_line->operand3, token);
       }
-      if (*token == ';')
+      if (token == NULL || *token == ';')
         return asm_line;
       // After 3 opereands, the next token can only be valid if it is a comment
       token = strtok(NULL, " \t,\n");
@@ -520,8 +512,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
   // Set machine code to the opcode, we will build on this
   parsed_asm->machine_code = instruction_opcode[opcode_number];
 
-  // Get immediate mask for this opcode
-  uint16_t immediate_mask = immediate_masks[opcode_number];
+  // Get min and max immediates for this opcode
   int16_t min = immediate_min_max[opcode_number][0];
   int16_t max = immediate_min_max[opcode_number][1];
   int shift_bits = 16 - immediate_bits[opcode_number];
@@ -774,8 +765,8 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
     // ret has no shared mapping
     case 11: {
-      break;
       parsed_asm->machine_code |= (0x01C0);
+      break;
     }
 
     // lshf, rsfl, rshfa have same mapping
