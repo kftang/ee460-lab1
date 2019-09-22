@@ -550,6 +550,9 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     // jmp and jsrr have same mapping
     case 3:
     case 5: {
+      uint16_t base = parse_register(asm_line->operand1) << 6;
+      printf("base: %d\n", base);
+      parsed_asm->machine_code |= base;
       break;
     }
 
@@ -611,23 +614,85 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     
     // not has no shared mapping
     case 10: {
+      uint16_t dr = parse_register(asm_line->operand1) << 9;
+      uint16_t base = parse_register(asm_line->operand2) << 6;
+      printf("dr: %d\nbase: %d\n", dr, base);
+      parsed_asm->machine_code |= (dr | base | 0x3F);
       break;
     }
 
     // ret has no shared mapping
     case 11: {
       break;
+      parsed_asm->machine_code |= (0x1B0);
     }
 
     // lshf, rsfl, rshfa have same mapping
     case 12:
     case 13:
     case 14: {
+      uint16_t dr = parse_register(asm_line->operand1) << 9;
+      uint16_t base = parse_register(asm_line->operand2) << 6;
+      printf("dr: %d\nbase: %d\n", dr, base);
+      parsed_asm->machine_code |= (dr | base);
+      if (asm_line->opcode[0] == 'r'){
+        if (asm_line->opcode[4] == 'l') {
+          parsed_asm->machine_code |= 0x10;
+        } else {
+          parsed_asm->machine_code |= 0x30;
+        }
+      }
+
+      // Parse immediate # from operand
+      struct parsed_num_t *parsed_num = parse_num(asm_line->operand3);
+      int16_t immediate = parsed_num->num;
+      free(parsed_num);
+
+      // Check if immediate is between valid min/max
+      int16_t min = immediate_min_max[opcode_number][0];
+      int16_t max = immediate_min_max[opcode_number][1];
+      if (immediate < min || immediate > max) {
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 3;
+        return parsed_asm;
+      }
+
+      // Shouldn't need to shift because it is unsigned
+      // uint16_t shift_amount = immediate;
+      // if (immediate < 0) {
+      //   int shift_bits = 16 - immediate_bits[opcode_number];
+      //   shift_amount <<= shift_bits;
+      //   shift_amount >>= shift_bits;
+      // }
+
+      parsed_asm->machine_code |= shift_amount;
       break;
     }
 
     // trap has no shared mapping
     case 18: {
+      // Parse immediate # from operand
+      struct parsed_num_t *parsed_num = parse_num(asm_line->operand3);
+      int16_t immediate = parsed_num->num;
+      free(parsed_num);
+
+      // Check if immediate is between valid min/max
+      int16_t min = immediate_min_max[opcode_number][0];
+      int16_t max = immediate_min_max[opcode_number][1];
+      if (immediate < min || immediate > max) {
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 3;
+        return parsed_asm;
+      }
+
+      uint16_t trap_vector = immediate;
+      if (immediate < 0) {
+        int shift_bits = 16 - immediate_bits[opcode_number];
+        trap_vector <<= shift_bits;
+        trap_vector >>= shift_bits;
+      }
+
+      parsed_asm->machine_code |= shift_amount;
       break;
     }
 
@@ -641,7 +706,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     }
 
     // fill has no shared mapping
-    case 34: {
+    case 42: {
       break;
     }
   }
@@ -807,7 +872,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Format machine code to hex string and print to obj file
-    fprintf(obj_file, "0x%X\n", line->machine_code); 
+    fprintf(obj_file, "0x%04X\n", line->machine_code); 
 
     // Free structs
     free_asm_line(asm_line);
