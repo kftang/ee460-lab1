@@ -839,6 +839,8 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
     // fill has no shared mapping
     case 42: {
+      uint16_t value = parse_register(asm_line->operand1);
+      parsed_asm->machine_code |= (value <<= 12);
       break;
     }
   }
@@ -918,7 +920,11 @@ int main(int argc, char* argv[]) {
     if (!asm_line->valid_line || !validate_asm_line(asm_line)) {
       printf("Line %d is invalid", line_number);
       free_asm_line(asm_line);
-      exit(2);
+      if (asm_state.state == INITIAL) {
+        exit(4);
+      } else {
+        exit(2);
+      }
       return 1;
     }
 
@@ -968,6 +974,12 @@ int main(int argc, char* argv[]) {
       struct label_t *label = asm_state.sym_table[i];
       printf("label name: %s\nlabel addr: %X\n", label->name, label->address);
     }
+  }
+  
+  if (asm_state.state != END) {
+    printf("Error, no .END was found. Error code: %d\n", 4);
+    exit(4);
+    return 1;
   }
   
   // Rewind file to beginning to start writing to obj code
