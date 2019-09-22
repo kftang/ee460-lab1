@@ -563,6 +563,38 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 7:
     case 16:
     case 17: {
+      uint16_t dr = parse_register(asm_line->operand1) << 9;
+      uint16_t base = parse_register(asm_line->operand2) << 6;
+      printf("dr: %d\nbase: %d\n", dr, base);
+      parsed_asm->machine_code |= (dr | base);
+
+      // Parse immediate # from operand
+      struct parsed_num_t *parsed_num = parse_num(asm_line->operand3);
+      int16_t immediate = parsed_num->num;
+      free(parsed_num);
+      // printf("immediate: %d\n", immediate);
+      if (asm_line->opcode[2] == 'w' && (immediate & 1)) {
+        printf("invalid immediate: %d\n", immediate);
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 3;
+        return parsed_asm;
+      }
+
+      // Check if immediate is between valid min/max
+      int16_t min = immediate_min_max[opcode_number][0];
+      int16_t max = immediate_min_max[opcode_number][1];
+      if (immediate < min || immediate > max) {
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 3;
+        return parsed_asm;
+      }
+      uint16_t unsigned_immediate = immediate;
+      if (immediate < 0) {
+        int shift_bits = 16 - immediate_bits[opcode_number];
+        unsigned_immediate <<= shift_bits;
+        unsigned_immediate >>= shift_bits;
+      }
+      parsed_asm->machine_code |= unsigned_immediate;
       break;
     }
 
