@@ -289,6 +289,7 @@ struct parsed_num_t * parse_num(char *asm_num) {
     // Make sure characters in # are valid for a decimal number
     for (int i = 1; i < asm_num_length; i++) {
       if (asm_num[i] != '-' && (asm_num[i] < '0' || asm_num[i] > '9')) {
+        printf("invalid number\n");
         parsed_num->valid_num = false;
         return parsed_num;
       }
@@ -297,6 +298,7 @@ struct parsed_num_t * parse_num(char *asm_num) {
     // Convert string to number
     long converted_num = strtol(asm_num + 1, NULL, 10);
     if (converted_num > INT_16_MAX) {
+      printf("number greater than 16 bits\n");
       parsed_num->valid_num = false;
       return parsed_num;
     }
@@ -305,6 +307,7 @@ struct parsed_num_t * parse_num(char *asm_num) {
     // Make sure characters after x are valid for a hex number
     for (int i = 1; i < asm_num_length; i++) {
       if (asm_num[i] != '-' && (asm_num[i] < '0' || asm_num[i] > '9') && (asm_num[i] < 'a' || asm_num[i] > 'f')) {
+        printf("invalid hex number\n");
         parsed_num->valid_num = false;
         return parsed_num;
       }
@@ -313,6 +316,7 @@ struct parsed_num_t * parse_num(char *asm_num) {
     // Convert string to number
     long converted_num = strtol(asm_num + 1, NULL, 16);
     if (converted_num > INT_16_MAX) {
+      printf("number greater than 16 bits\n");
       parsed_num->valid_num = false;
       return parsed_num;
     }
@@ -323,6 +327,15 @@ struct parsed_num_t * parse_num(char *asm_num) {
   }
 
   return parsed_num;
+}
+
+struct label_t * get_label(char *label_name) {
+  for (int i = 0; i < MAX_SYMBOLS && asm_state.sym_table[i] != NULL; i++) {
+    if (strcmp(asm_state.sym_table[i]->name, label_name) == 0) {
+      return asm_state.sym_table[i];
+    }
+  }
+  return NULL;
 }
 
 uint16_t parse_register(char *register_name) {
@@ -504,7 +517,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 19: {
       uint16_t dr = parse_register(asm_line->operand1) << 9;
       uint16_t sr1 = parse_register(asm_line->operand2) << 6;
-      printf("dr: %d\nsr1: %d\n", dr, sr1);
       parsed_asm->machine_code |= (dr | sr1);
       if (is_register(asm_line->operand3)) {
         uint16_t sr2 = parse_register(asm_line->operand3);
@@ -524,6 +536,8 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
           parsed_asm->error_code = 3;
           return parsed_asm;
         }
+
+        // If immediate is negative, we need to remove the leading 1s
         uint16_t unsigned_immediate = immediate;
         if (immediate < 0) {
           unsigned_immediate <<= shift_bits;
@@ -542,7 +556,60 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 28:
     case 29:
     case 30:
-    case 31: {
+    case 31: 
+    case 32: 
+    case 33: 
+    case 34: 
+    case 35: 
+    case 36: 
+    case 37: 
+    case 38: 
+    case 39: {
+      // Figure out which condition codes to branch on
+      int opcode_len = strlen(asm_line->opcode);
+      for (int i = 2; i < opcode_len; i++) {
+        if (asm_line->opcode[i] == 'n')
+          parsed_asm->machine_code |= 0x0800;
+        if (asm_line->opcode[i] == 'z')
+          parsed_asm->machine_code |= 0x0400;
+        if (asm_line->opcode[i] == 'p')
+          parsed_asm->machine_code |= 0x0200;
+      }
+
+      int16_t offset;
+
+      // If offset is a label, convert it into an offset
+      if (is_label(asm_line->operand1)) {
+        struct label_t *label = get_label(asm_line->operand1);
+        if (label == NULL) {
+          parsed_asm->valid_asm = false;
+          parsed_asm->error_code = 1;
+          return parsed_asm;
+        }
+        offset = label->address - asm_state.cur_address;
+
+      // Otherwise parse offset from operand
+      } else {
+        struct parsed_num_t *parsed_num = parse_num(asm_line->operand1);
+        offset = parsed_num->num;
+        free(parsed_num);
+      }
+
+      // Check that the offset is a valid range
+      if (offset < min || offset > max) {
+        parsed_asm->valid_asm = false;
+        parsed_asm->error_code = 3;
+        return parsed_asm;
+      }
+
+      // If immediate is negative, we need to remove the leading 1s
+      uint16_t unsigned_offset = offset;
+      if (offset < 0) {
+        unsigned_offset <<= shift_bits;
+        unsigned_offset >>= shift_bits;
+      }
+
+      parsed_asm->machine_code |= unsigned_offset;
       break;
     }
 
@@ -765,7 +832,7 @@ int main(int argc, char* argv[]) {
 
     // Tokenize asm string
     struct asm_line_t *asm_line = tokenize_line(buffer);
-    printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
+    // printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
     
     // Checks for empty line and skips it
     if (asm_line->state == EMPTY_LINE || asm_state.state == END) {
@@ -820,6 +887,14 @@ int main(int argc, char* argv[]) {
     free_asm_line(asm_line);
     line_number++;
     asm_state.cur_address += 2;
+  }
+
+  // Debug print for symbol table
+  for (int i = 0; i < MAX_SYMBOLS; i++) {
+    if (asm_state.sym_table[i] != NULL) {
+      struct label_t *label = asm_state.sym_table[i];
+      printf("label name: %s\nlabel addr: %X\n", label->name, label->address);
+    }
   }
   
   // Rewind file to beginning to start writing to obj code

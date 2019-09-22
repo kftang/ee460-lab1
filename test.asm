@@ -1,6 +1,7 @@
 .ORIG x3000
-  ADD R1, R2, R3
-  ADD R0, R7, #10
-  XOR R3, R5, xa
-  AND R6, R6, #0
+L1  ADD R1, R2, R3
+L2  ADD R0, R7, #10
+    XOR R3, R5, xa
+
+L3  AND R6, R6, #0
 .END
