@@ -149,7 +149,7 @@ struct asm_line_t * tokenize_line(char *asm_str) {
   asm_line->operand3 = NULL;
 
   // Iterate through tokens
-  char *token = strtok(asm_str, " \t,");
+  char *token = strtok(asm_str, " \t,\n");
 
   // If token is empty, or starts with comment, mark line as empty
   if (token == NULL || *token == ';') {
@@ -172,7 +172,7 @@ struct asm_line_t * tokenize_line(char *asm_str) {
     strcpy(asm_line->label_name, token);
 
     // Now find opcode
-    token = strtok(NULL, " \t,");
+    token = strtok(NULL, " \t,\n");
 
     // Make sure token exists, otherwise return invalid line
     if (token == NULL) {
@@ -207,25 +207,25 @@ struct asm_line_t * tokenize_line(char *asm_str) {
   }
 
   // Store operands and stop when comment reached or end of line
-  token = strtok(NULL, " \t,");
+  token = strtok(NULL, " \t,\n");
   if (token != NULL && *token != ';') {
     asm_line->operand1 = (char *) malloc(sizeof(char) * (strlen(token) + 1));
     strcpy(asm_line->operand1, token);
 
     // Check operand 2
-    token = strtok(NULL, " \t,");
+    token = strtok(NULL, " \t,\n");
     if (token != NULL && *token != ';') {
       asm_line->operand2 = (char *) malloc(sizeof(char) * (strlen(token) + 1));
       strcpy(asm_line->operand2, token);
 
       // Check operand 3
-      token = strtok(NULL, " \t,");
+      token = strtok(NULL, " \t,\n");
       if (token != NULL && *token != ';') {
         asm_line->operand3 = (char *) malloc(sizeof(char) * (strlen(token) + 1));
         strcpy(asm_line->operand3, token);
       }
       // After 3 opereands, the next token can only be valid if it is a comment
-      token = strtok(NULL, " \t,");
+      token = strtok(NULL, " \t,\n");
       if (token != NULL && *token != ';') {
         // Free everything in the return struct and set to NULL
         if (asm_line->label_name != NULL)
@@ -355,6 +355,7 @@ bool check_operand_type(int opcode_number, char *operand, int operand_num) {
 bool validate_asm_line(struct asm_line_t *asm_line) {
   if (asm_line->opcode == NULL)
     return false;
+    
   // Find the operand number corresponding to the entry in the static array
   int opcode_number = -1;
   for (int i = 0; i < num_opcodes; i++) {
@@ -365,6 +366,7 @@ bool validate_asm_line(struct asm_line_t *asm_line) {
   }
   
   int max_operands = num_operands[opcode_number];
+
   // Verify # of operands and type
   switch (max_operands) {
     case 0:
@@ -420,6 +422,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
   // If assembler state is not ORIG_SET before first instruction, error
   if (asm_state.state != ORIG_SET && strcmp(asm_line->opcode, ".orig") != 0) {
+    printf("An instruction was read before .orig was set\n");
     parsed_asm->valid_asm = false;
     parsed_asm->error_code = 4;
     return parsed_asm;
@@ -464,7 +467,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 0:
     case 1:
     case 19: {
-      uint16_t dr = parse_register(asm_line->opereand1) << 11;
+      uint16_t dr = parse_register(asm_line->operand1) << 11;
       uint16_t sr1 = parse_register(asm_line->operand2) << 8;
       parsed_asm->machine_code |= (dr | sr1);
       if (is_register(asm_line->operand3)) {
@@ -478,13 +481,93 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         struct parsed_num_t *parsed_num = parse_num(asm_line->operand3);
         uint16_t immediate = parsed_num->num;
         free(parsed_num);
+
+        // Check if immediate is larger than possible for the instruction
         if (immediate & ~immediate_mask) {
           parsed_asm->valid_asm = false;
           parsed_asm->error_code = 3;
           return parsed_asm;
         }
-        parsed_asm->machine_code |= 
+        parsed_asm->machine_code |= immediate;
       }
+      break;
+    }
+
+    // All cases of br
+    case 2:
+    case 25:
+    case 26:
+    case 27:
+    case 28:
+    case 29:
+    case 30:
+    case 31: {
+      break;
+    }
+
+    // jmp and jsrr have same mapping
+    case 3:
+    case 5: {
+      break;
+    }
+
+    // jsr has no shared mapping
+    case 4: {
+      break;
+    }
+
+    // ldb, ldw, stb, stw have same mapping
+    case 6:
+    case 7:
+    case 16:
+    case 17: {
+      break;
+    }
+
+    // lea has no shared mapping
+    case 8: {
+      break;
+    }
+    
+    // nop and rti have same mapping
+    case 9:
+    case 15: {
+      break;
+    }
+    
+    // not has no shared mapping
+    case 10: {
+      break;
+    }
+
+    // ret has no shared mapping
+    case 11: {
+      break;
+    }
+
+    // lshf, rsfl, rshfa have same mapping
+    case 12:
+    case 13:
+    case 14: {
+      break;
+    }
+
+    // trap has no shared mapping
+    case 18: {
+      break;
+    }
+
+    // halt, in, out, getc, puts have same mapping
+    case 20:
+    case 21:
+    case 22:
+    case 23:
+    case 24: {
+      break;
+    }
+
+    // fill has no shared mapping
+    case 34: {
       break;
     }
   }
@@ -492,7 +575,7 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
   return parsed_asm;
 }
 
-int main(int argc, char* argv[]) {
+int main_tester(int argc, char* argv[]) {
   char buffer[MAX_LINE_LENGTH];
   fgets(buffer, MAX_LINE_LENGTH, stdin);
   buffer[strcspn(buffer, "\n")] = 0;
@@ -502,9 +585,10 @@ int main(int argc, char* argv[]) {
   printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
   validate_asm_line(asm_line);
   free_asm_line(asm_line);
+  return 0;
 }
 
-int main_main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
   // Print usage if wrong number of args
   if (argc != 3) {
     printf("Usage: %s <asm file in> <obj file out>\n", argv[0]);
@@ -539,7 +623,7 @@ int main_main(int argc, char* argv[]) {
   char buffer[MAX_LINE_LENGTH];
   
   // Keep track of line # in asm file
-  int line_number = 0;
+  int line_number = 1;
 
   uint16_t current_address;
 
@@ -552,6 +636,7 @@ int main_main(int argc, char* argv[]) {
 
     // Tokenize asm string
     struct asm_line_t *asm_line = tokenize_line(buffer);
+    printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
     
     // Make sure the line is valid
     if (!asm_line->valid_line || !validate_asm_line(asm_line)) {
@@ -613,6 +698,7 @@ int main_main(int argc, char* argv[]) {
   // Reset asm state
   asm_state.state = INITIAL;
   asm_state.cur_address = asm_state.orig_address;
+  line_number = 1;
   while(fgets(buffer, MAX_LINE_LENGTH, asm_file) != NULL) {
     // Convert buffer to all lowercase
     for (int i = 0; i < MAX_LINE_LENGTH && buffer[i] != '\0'; i++) {
@@ -627,13 +713,14 @@ int main_main(int argc, char* argv[]) {
 
     // Check for error in parsing asm
     if (!line->valid_asm) {
-      printf("Error in parsing asm\n");
+      printf("Error in line %d\n", line_number);
       exit(line->error_code);
       return 1;
     }
 
     // Check if we skip the current line (ie: if there was only a comment)
     if (asm_line->state == EMPTY_LINE) {
+      line_number++;
       free_asm_line(asm_line);
       free(line);
       continue;
@@ -645,6 +732,7 @@ int main_main(int argc, char* argv[]) {
     // Free structs
     free_asm_line(asm_line);
     free(line);
+    line_number++;
   }
 
   // Close file to flush buffer and write to disk
