@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define INT_16_MAX        65535
 #define MAX_LINE_LENGTH   255
 #define MAX_LABEL_LENGTH  20
 #define MAX_OPCODE_LENGTH 6
@@ -47,7 +48,7 @@ struct parsed_asm_t {
 
 struct parsed_num_t {
   bool              valid_num;
-  uint16_t          num;
+  int16_t           num;
 };
 
 struct asm_line_t {
@@ -63,45 +64,59 @@ struct asm_line_t {
 // Global variables
 struct assembler_state_t asm_state;
 
-char valid_opcodes[35][6] = {
+char valid_opcodes[43][6] = {
   "add", "and", "br", "jmp", "jsr", "jsrr", "ldb", "ldw",
-  "lea", "nop", "not", "ret", "lshf", "rsfl", "rshfa", "rti", "stb",
+  "lea", "nop", "not", "ret", "lshf", "rshfl", "rshfa", "rti", "stb",
   "stw", "trap", "xor", "halt", "in", "out", "getc", "puts",
   "brn", "brz", "brp", "brnz", "brnp", "brzp", "brnzp",
+  "brzn", "brpn", "brpz", "brzpn", "brznp", "brpzn", "brpnz", "brnpz",
   ".orig", ".end", ".fill"
 };
 
-int num_operands[35] = {
+int num_operands[43] = {
   3, 3, 1, 1, 1, 1, 3, 3,
   2, 0, 2, 0, 3, 3, 3, 0, 3,
   3, 1, 3, 0, 0, 0, 0, 0,
   1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1,
   1, 0, 1
 };
 
-int immediate_bits[35] = {
+int immediate_bits[43] = {
   5, 5, 9, 0, 11, 0, 6, 6,
   9, 0, 0, 0, 4, 4, 4, 0, 6,
   6, 8, 5, 0, 0, 0, 0, 0,
   9, 9, 9, 9, 9, 9,
+  9, 9, 9, 9, 9, 9, 9,
   16, 0, 16
 };
 
-uint16_t immediate_masks[32] = {
+int16_t immediate_min_max[43][2] = {
+  { -16, 15 }, { -16, 15 }, { -256, 255 },  {}, { -1024, 1023 }, {}, { -32, 31 }, { -32, 31},
+  { -256, 255 }, {}, {}, {}, { 0, 15 }, { 0, 15 }, { 0, 15 }, {},  { -32, 31 },
+  { -32, 31 }, { 0, 255 }, { -16, 15 }, {}, {}, {}, {}, {},
+  { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, 
+  { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255 }, { -256, 255},
+  { -32768, 32767 }, {}, { -32768, 32767 }
+};
+
+uint16_t immediate_masks[43] = {
   0x001f, 0x001f, 0x01ff, 0x0000, 0x07ff, 0x0000, 0x003f, 0x003f,
   0x01ff, 0x0000, 0x0000, 0x0000, 0x000f, 0x000f, 0x000f, 0x0000, 0x003f,
   0x003f, 0x00ff, 0x001f, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-  0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff
+  0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 
+  0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff, 0x01ff
 };
 
-uint16_t instruction_opcode[32] = {
+uint16_t instruction_opcode[43] = {
   0x1000, 0x5000, 0x0000, 0xb000, 0x4000, 0x4000, 0x2000, 0x6000,
   0xe000, 0x0000, 0x9000, 0xb000, 0xc000, 0xc000, 0xc000, 0x8000, 0x3000,
   0x7000, 0xf000, 0x9000, 0xf000, 0xf000, 0xf000, 0xf000, 0xf000,
-  0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
+  0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+  0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
 };
 
-enum operand_type_t valid_types[35][3] = {
+enum operand_type_t valid_types[43][3] = {
   { REGISTER, REGISTER, REGISTER | IMMEDIATE },
   { REGISTER, REGISTER, REGISTER | IMMEDIATE },
   { LABEL | IMMEDIATE },
@@ -123,6 +138,14 @@ enum operand_type_t valid_types[35][3] = {
   { IMMEDIATE },
   { REGISTER, REGISTER, REGISTER | IMMEDIATE },
   { }, { }, { }, { }, { },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
+  { LABEL | IMMEDIATE },
   { LABEL | IMMEDIATE },
   { LABEL | IMMEDIATE },
   { LABEL | IMMEDIATE },
@@ -272,7 +295,12 @@ struct parsed_num_t * parse_num(char *asm_num) {
     }
     
     // Convert string to number
-    parsed_num->num = (int) strtol(asm_num + 1, NULL, 10);
+    long converted_num = strtol(asm_num + 1, NULL, 10);
+    if (converted_num > INT_16_MAX) {
+      parsed_num->valid_num = false;
+      return parsed_num;
+    }
+    parsed_num->num = (int16_t) converted_num;
   } else if (*asm_num == 'x') {
     // Make sure characters after x are valid for a hex number
     for (int i = 1; i < asm_num_length; i++) {
@@ -283,7 +311,12 @@ struct parsed_num_t * parse_num(char *asm_num) {
     }
     
     // Convert string to number
-    parsed_num->num = (int) strtol(asm_num + 1, NULL, 16);
+    long converted_num = strtol(asm_num + 1, NULL, 16);
+    if (converted_num > INT_16_MAX) {
+      parsed_num->valid_num = false;
+      return parsed_num;
+    }
+    parsed_num->num = (int16_t) converted_num;
   } else {
     parsed_num->valid_num = false;
     return parsed_num;
@@ -467,8 +500,9 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 0:
     case 1:
     case 19: {
-      uint16_t dr = parse_register(asm_line->operand1) << 11;
-      uint16_t sr1 = parse_register(asm_line->operand2) << 8;
+      uint16_t dr = parse_register(asm_line->operand1) << 9;
+      uint16_t sr1 = parse_register(asm_line->operand2) << 6;
+      printf("dr: %d\nsr1: %d\n", dr, sr1);
       parsed_asm->machine_code |= (dr | sr1);
       if (is_register(asm_line->operand3)) {
         uint16_t sr2 = parse_register(asm_line->operand3);
@@ -479,16 +513,24 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
 
         // Parse immediate # from operand
         struct parsed_num_t *parsed_num = parse_num(asm_line->operand3);
-        uint16_t immediate = parsed_num->num;
+        int16_t immediate = parsed_num->num;
         free(parsed_num);
 
-        // Check if immediate is larger than possible for the instruction
-        if (immediate & ~immediate_mask) {
+        // Check if immediate is between valid min/max
+        int16_t min = immediate_min_max[opcode_number][0];
+        int16_t max = immediate_min_max[opcode_number][1];
+        if (immediate < min || immediate > max) {
           parsed_asm->valid_asm = false;
           parsed_asm->error_code = 3;
           return parsed_asm;
         }
-        parsed_asm->machine_code |= immediate;
+        uint16_t unsigned_immediate = immediate;
+        if (immediate < 0) {
+          int shift_bits = 16 - immediate_bits[opcode_number];
+          unsigned_immediate <<= shift_bits;
+          unsigned_immediate >>= shift_bits;
+        }
+        parsed_asm->machine_code |= unsigned_immediate;
       }
       break;
     }
@@ -625,8 +667,6 @@ int main(int argc, char* argv[]) {
   // Keep track of line # in asm file
   int line_number = 1;
 
-  uint16_t current_address;
-
   // Loop through asm file to find labels
   while (fgets(buffer, MAX_LINE_LENGTH, asm_file) != NULL) {
     // Convert buffer to all lowercase
@@ -664,11 +704,11 @@ int main(int argc, char* argv[]) {
           exit(3);
           return 1;
         }
-        
+
         // Store as orig address
         asm_state.orig_address = parsed_num->num;
         asm_state.state = ORIG_SET;
-        current_address = parsed_num->num;
+        asm_state.cur_address = parsed_num->num;
         free(parsed_num);
       } else {
         printf("Expected .ORIG as first instruction\n");
@@ -678,7 +718,7 @@ int main(int argc, char* argv[]) {
     } else if (asm_line->label_name != NULL) {
       // Create a new label and set its address and copy its name
       struct label_t *new_label = (struct label_t *) malloc(sizeof(struct label_t));
-      new_label->address = current_address;
+      new_label->address = asm_state.cur_address;
       strcpy(new_label->name, asm_line->label_name);
 
       // Add to symbol table of assembler
@@ -689,7 +729,7 @@ int main(int argc, char* argv[]) {
 
     free_asm_line(asm_line);
     line_number++;
-    current_address++;
+    asm_state.cur_address += 2;
   }
   
   // Rewind file to beginning to start writing to obj code
@@ -707,6 +747,13 @@ int main(int argc, char* argv[]) {
 
     // Tokenize asm string
     struct asm_line_t *asm_line = tokenize_line(buffer);
+
+    // Check if we skip the current line (ie: if there was only a comment)
+    if (asm_line->state == EMPTY_LINE) {
+      line_number++;
+      free_asm_line(asm_line);
+      continue;
+    }
   
     // Get line from parsed asm
     struct parsed_asm_t *line = parse_asm(asm_line);
@@ -732,6 +779,7 @@ int main(int argc, char* argv[]) {
     // Free structs
     free_asm_line(asm_line);
     free(line);
+    asm_state.cur_address += 2;
     line_number++;
   }
 
