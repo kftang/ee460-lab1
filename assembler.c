@@ -614,7 +614,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         unsigned_offset <<= shift_bits;
         unsigned_offset >>= shift_bits;
       }
-      printf("br offset: %d\n", offset);
 
       parsed_asm->machine_code |= unsigned_offset;
       break;
@@ -624,7 +623,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 3:
     case 5: {
       uint16_t base = parse_register(asm_line->operand1) << 6;
-      printf("base: %d\n", base);
       parsed_asm->machine_code |= base;
       break;
     }
@@ -663,7 +661,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         unsigned_offset <<= shift_bits;
         unsigned_offset >>= shift_bits;
       }
-      printf("jsr offset: %d\n", offset);
 
       parsed_asm->machine_code |= (unsigned_offset | 0x0800);
       break;
@@ -676,14 +673,12 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 17: {
       uint16_t dr = parse_register(asm_line->operand1) << 9;
       uint16_t base = parse_register(asm_line->operand2) << 6;
-      printf("dr: %d\nbase: %d\n", dr, base);
       parsed_asm->machine_code |= (dr | base);
 
       // Parse immediate # from operand
       struct parsed_num_t *parsed_num = parse_num(asm_line->operand3);
       int16_t immediate = parsed_num->num;
       free(parsed_num);
-      // printf("immediate: %d\n", immediate);
       if (asm_line->opcode[2] == 'w' && (immediate & 1)) {
         printf("invalid immediate: %d\n", immediate);
         parsed_asm->valid_asm = false;
@@ -742,7 +737,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
         unsigned_offset <<= shift_bits;
         unsigned_offset >>= shift_bits;
       }
-      printf("lea offset: %d\n", offset);
 
       parsed_asm->machine_code |= (unsigned_offset | dr);
       break;
@@ -758,7 +752,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 10: {
       uint16_t dr = parse_register(asm_line->operand1) << 9;
       uint16_t base = parse_register(asm_line->operand2) << 6;
-      printf("dr: %d\nbase: %d\n", dr, base);
       parsed_asm->machine_code |= (dr | base | 0x3F);
       break;
     }
@@ -775,7 +768,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
     case 14: {
       uint16_t dr = parse_register(asm_line->operand1) << 9;
       uint16_t base = parse_register(asm_line->operand2) << 6;
-      printf("dr: %d\nbase: %d\n", dr, base);
       parsed_asm->machine_code |= (dr | base);
       if (asm_line->opcode[0] == 'r'){
         if (asm_line->opcode[4] == 'l') {
@@ -847,19 +839,6 @@ struct parsed_asm_t * parse_asm(struct asm_line_t *asm_line) {
   return parsed_asm;
 }
 
-int main_tester(int argc, char* argv[]) {
-  char buffer[MAX_LINE_LENGTH];
-  fgets(buffer, MAX_LINE_LENGTH, stdin);
-  buffer[strcspn(buffer, "\n")] = 0;
-  // struct parsed_num_t *parsed_num = parse_num(buffer);
-  // printf("valid: %d\nnum: %d", parsed_num->valid_num, parsed_num->num);
-  struct asm_line_t *asm_line = tokenize_line(buffer);
-  printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
-  validate_asm_line(asm_line);
-  free_asm_line(asm_line);
-  return 0;
-}
-
 int main(int argc, char* argv[]) {
   // Print usage if wrong number of args
   if (argc != 3) {
@@ -906,7 +885,6 @@ int main(int argc, char* argv[]) {
 
     // Tokenize asm string
     struct asm_line_t *asm_line = tokenize_line(buffer);
-    printf("state: %d\nvalid: %d\nlabel: %s\nopcode: %s\nop1: %s\nop2: %s\nop3: %s\n", asm_line->state, asm_line->valid_line, asm_line->label_name, asm_line->opcode, asm_line->operand1, asm_line->operand2, asm_line->operand3);
     
     // Checks for empty line and skips it
     if (asm_line->state == EMPTY_LINE || asm_state.state == END) {
@@ -987,14 +965,6 @@ int main(int argc, char* argv[]) {
     asm_state.cur_address += 2;
   }
 
-  // Debug print for symbol table
-  for (int i = 0; i < MAX_SYMBOLS; i++) {
-    if (asm_state.sym_table[i] != NULL) {
-      struct label_t *label = asm_state.sym_table[i];
-      printf("label name: %s\nlabel addr: %X\n", label->name, label->address);
-    }
-  }
-  
   if (asm_state.state != END) {
     printf("Error, no .END was found. Error code: %d\n", 4);
     exit(4);
